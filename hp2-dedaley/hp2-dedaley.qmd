@@ -1,0 +1,10 @@
+---
+title: "Homework Project 2"
+author: "Drue Daley"
+format: 
+  html:
+    embed-resources: true
+editor_options: 
+  chunk_output_type: console
+---
+
