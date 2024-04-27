@@ -1,0 +1,200 @@
+---
+title: "Homework Project 2"
+author: "Drue Daley"
+format: 
+  html:
+    embed-resources: true
+editor_options: 
+  chunk_output_type: console
+---
+
+## Set-Up
+
+```{r}
+library(tidyverse)
+library(tidytext)
+library(here)
+
+df_dialogue <- read_csv(here("data", "stranger_things_all_dialogue.csv"))
+df_episodes <- read_csv(here("data", "episodes.csv"))
+```
+
+## Introduction
+
+In this report, I will be looking at dialogue and episode information
+from the popular Netflix TV show "Stranger Things". I am interested in
+exploring the breakdown of writers/directors across seasons, the most
+common words from dialogue, and the sentiment trends of stage direction
+text and dialogue. I was originally interested in exploring the dialogue
+and word frequencies of specific characters, but upon investigation, the
+stage_direction variable in the data set does not always include which
+character is speaking. Therefore, I do not have the information needed
+to conduct these character-based explorations.
+
+## Data Dictionary
+
+*df_dialogue:*
+
+-   season = season number
+
+-   episode = episode number within season
+
+-   line = line order
+
+-   raw_text = original text with dialogue and stage directions
+
+-   stage_direction = text describing what is happening or who is
+    talking
+
+-   dialogue = dialogue spoken
+
+-   start_time = time within the episode when the line begins
+
+-   end_time = time within the episode when the line ends
+
+*df_episodes:*
+
+-   season = season number
+
+-   episode = episode number within season
+
+-   title = episode title
+
+-   directed_by = director(s) of episode
+
+-   written_by = writer(s) of episode
+
+-   original_release_date = release date of episode
+
+## Writer Frequencies
+
+When looking at visual media and its contents, it is important to
+understand the people behind the vision. Specific writers or directors
+may be more prevalent behind the scenes and influential in the overall
+direction of the show. Specifically, I am curious to investigate which
+writers are featured most often in the total `r nrow(df_episodes)`
+episodes of the show. Given that they created the show, I hypothesize
+that the Duffer Brothers will be the most common writers across all
+seasons.
+
+```{r}
+df_episodes |>
+  ggplot(aes(x = written_by, fill = written_by)) +
+  geom_bar() +
+   labs(x = "Writer(s)", y = "Number of Episodes", title = "Frequency of Writers")
+```
+
+As seen here, my hypothesis was correct. The Duffer Brothers have
+written 15 episodes on their own and 1 additional episode's teleplay.
+This accounts for nearly half of all episodes of the show. The second
+most frequently seen writer is Justin Doble with only 4 episodes
+written. It is clear that the Duffer Brothers drive the story while
+other writers come in for only a few episodes at a time.
+
+## Common Dialogue Words
+
+I am interested in exploring the common words across all episodes of the
+show and episodes exclusively written by the Duffer Brothers, then
+comparing the two. I would expect to see a large overlap in the most
+common words, as they have the largest influence over the show's
+writing. I will be excluding stop words in this analysis, but the name
+Will (a main character) becomes erased in doing so. I am not sure how to
+exclude this specific word from the anti_join. Also, the raw_text
+variable was repetitive to look at in the data set, so I removed it from
+the df_words data frame.
+
+```{r}
+df_dialogue <- df_dialogue |>
+  left_join(df_episodes |> select(season, episode, title, written_by))
+
+df_words <- df_dialogue |>
+  subset(select = -c(raw_text)) |>
+  unnest_tokens(word, dialogue) |>
+  anti_join(stop_words)
+
+df_writer_word_count <- df_words |>
+  count(word, written_by) |>
+  bind_tf_idf(word, written_by, n) |>
+  drop_na()
+
+df_writer_word_count |>
+  group_by(word) |>
+  filter(n > 50) |>
+  arrange(desc(n)) |>
+  ggplot(aes(x = n, y = reorder(word, n))) +
+  geom_col(show.legend = FALSE) +
+  labs(x = "Count", y = "Word", title = "Frequency of Words in Stranger Things")
+
+df_writer_word_count |>
+  group_by(word) |>
+  filter(written_by == "The Duffer Brothers") |>
+  filter(n > 50) |>
+  arrange(desc(n)) |>
+  ggplot(aes(x = n, y = reorder(word, n))) +
+  geom_col(show.legend = FALSE) +
+  labs(x = "Count", y = "Word", title = "Frequency of Words in Duffer Brothers Written Stranger Things")
+
+df_writer_word_count |>
+  group_by(word) |>
+  filter(written_by == "Justin Doble") |>
+  filter(n > 15) |>
+  arrange(desc(n)) |>
+  ggplot(aes(x = n, y = reorder(word, n))) +
+  geom_col(show.legend = FALSE) +
+  labs(x = "Count", y = "Word", title = "Frequency of Words in Justin Doble Written Stranger Things")
+```
+
+Overall, the frequency lists between all episodes and the Duffer
+Brothers' episodes are almost identical in ratio and order. My
+hypothesis was correct. I also find it rather amusing that one of the
+most frequently used words in the show is "shit". I remember the kids
+saying it a lot, but this is funny to see in the data with real numbers
+behind it. I decided to add in the analysis of Justin Doble's writing as
+well to highlight the difference less episodes makes. Justin Doble's
+episodes, however, consist of similar words but also many different
+ones. For example, "jane" is used in his episodes more than it is
+throughout the show. This is probably because his episodes relied on the
+story line of Jane's character more so than the rest of the show did.
+
+## Sentiment Analysis
+
+I am curious to investigate the overall sentiment of the show through
+its dialogue and stage directions. I will be analyzing these separately.
+
+```{r}
+dialogue_sent_counts <- df_dialogue |>
+  unnest_tokens(word, dialogue) |>
+  inner_join(get_sentiments("bing")) |>
+  count(word, sentiment, sort = TRUE) |>
+  ungroup() |>
+  mutate(word = reorder(word, n))
+
+stage_sent_counts <- df_dialogue |>
+  unnest_tokens(word, stage_direction) |>
+  inner_join(get_sentiments("bing")) |>
+  count(word, sentiment, sort = TRUE) |>
+  ungroup() |>
+  mutate(word = reorder(word, n))
+
+dialogue_sent_counts |>
+  top_n(30, n) |>
+  ggplot(aes(n, word, fill = sentiment)) +
+  geom_col(show.legend = FALSE) +
+  facet_wrap(~sentiment, scales = "free_y") +
+  labs(x = "Contribution to Sentiment", y = NULL, title = "Dialogue Sentiment")
+
+stage_sent_counts |>
+  top_n(30, n) |>
+  ggplot(aes(n, word, fill = sentiment)) +
+  geom_col(show.legend = FALSE) +
+  facet_wrap(~sentiment, scales = "free_y") +
+  labs(x = "Contribution to Sentiment", y = NULL, title = "Stage Direction Sentiment")
+```
+
+As shown in these sentiment analyses, the sentiment of the stage
+directions is far more negative than that of the dialogue. As someone
+who has seen the show, this makes a lot of sense. The show-runners want
+the audience to be unsettled and immersed in an eerie vibe for the show
+to have its intended effect. With the dialogue, however, the characters
+speak to each other and create a more balanced conversation sentiment
+dynamic.
